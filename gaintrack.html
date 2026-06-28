@@ -161,7 +161,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:1
       <div class="macro-card"><div class="macro-val" id="carb-val" style="color:#7c5cfc">0г</div><div class="macro-label">Углеводы</div></div>
       <div class="macro-card"><div class="macro-val" id="fat-val" style="color:#fc5c7d">0г</div><div class="macro-label">Жиры</div></div>
     </div>
-    <button class="btn btn-secondary" style="margin-top:14px" onclick="saveCaloriesToHistory()">📅 Сохранить день</button>
+    <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:10px">✓ Калории сохраняются автоматически</div>
   </div>
   <div class="card">
     <div class="card-title">История калорий</div>
@@ -463,10 +463,18 @@ let state = JSON.parse(localStorage.getItem('gt2') || '{}');
 if(!state.sessions) state.sessions = [];
 if(!state.goals) state.goals = {kcal:2800,p:160,c:320,f:80};
 if(!state.weights) state.weights = {}; // exercise name → last weight used
-let todayFood = JSON.parse(sessionStorage.getItem('gt_food') || '[]');
+// Еда хранится в state по дате — синхронизируется с Google Sheets
+function getTodayFood(){ return (state.food && state.food[todayKey()]) ? state.food[todayKey()] : []; }
+function setTodayFood(arr){
+  if(!state.food) state.food = {};
+  state.food[todayKey()] = arr;
+  // Чистим старше 14 дней
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-14);
+  Object.keys(state.food).forEach(k => { if(new Date(k) < cutoff) delete state.food[k]; });
+}
 
 function save(){ localStorage.setItem('gt2', JSON.stringify(state)); }
-function saveFood(){ sessionStorage.setItem('gt_food', JSON.stringify(todayFood)); }
+
 function todayKey(){ return new Date().toISOString().split('T')[0]; }
 function todayDow(){ return new Date().getDay(); } // 0=sun
 
@@ -721,13 +729,14 @@ async function analyzeFood(){
       })
     });
     const data = await response.json();
+    if(data.error) throw new Error(data.error.message || JSON.stringify(data.error));
     const raw = data.content?.[0]?.text || '';
-    // Убираем возможные markdown backticks на всякий случай
     const clean = raw.replace(/```json|```/g,'').trim();
     const items = JSON.parse(clean);
-    if(!Array.isArray(items)) throw new Error('not array');
+    if(!Array.isArray(items)) throw new Error('not array: ' + clean.slice(0,100));
+    const arr = getTodayFood();
     items.forEach(item => {
-      todayFood.push({
+      arr.push({
         name: item.name,
         kcal: Math.round(item.kcal || 0),
         p: Math.round((item.p || 0)*10)/10,
@@ -735,23 +744,50 @@ async function analyzeFood(){
         f: Math.round((item.f || 0)*10)/10,
       });
     });
-    saveFood();
+    setTodayFood(arr);
+    // Автоматически обновляем историю калорий за сегодня
+    autoSaveCalories();
+    save();
     renderNutrition();
+    renderCalHistory();
     document.getElementById('ai-food-input').value = '';
     status.style.color = 'var(--green)';
     status.textContent = `✓ Добавлено: ${items.map(i=>i.name).join(', ')}`;
   } catch(e) {
     status.style.color = 'var(--accent2)';
-    status.textContent = '⚠ Не удалось распознать. Попробуй написать подробнее.';
+    status.textContent = '⚠ Ошибка: ' + (e.message || e);
+    console.error('API error:', e);
   } finally {
     btn.disabled = false;
     btn.textContent = '✨ Посчитать калории';
   }
 }
 
-function removeFood(i){ todayFood.splice(i,1); saveFood(); renderNutrition(); }
+function removeFood(i){
+  const arr = getTodayFood();
+  arr.splice(i,1);
+  setTodayFood(arr);
+  save();
+  renderNutrition();
+}
+
+function autoSaveCalHistory(){
+  const total = getTodayFood().reduce((a,f)=>a+f.kcal,0);
+  if(!state.calHistory) state.calHistory = [];
+  const key = todayKey();
+  const existing = state.calHistory.findIndex(e => e.date === key);
+  if(existing >= 0){
+    state.calHistory[existing].kcal = Math.round(total);
+  } else if(total > 0) {
+    state.calHistory.unshift({ date: key, kcal: Math.round(total) });
+    if(state.calHistory.length > 10) state.calHistory = state.calHistory.slice(0,10);
+  }
+  if(total > 0){ save(); renderCalHistory(); }
+}
 
 function renderNutrition(){
+  // Перезагружаем еду на случай если день сменился
+  const todayFood = getTodayFood();
   const t = todayFood.reduce((a,f)=>({kcal:a.kcal+f.kcal,p:a.p+f.p,c:a.c+f.c,f:a.f+f.f}),{kcal:0,p:0,c:0,f:0});
   const goal = state.goals;
   const pct = Math.min(t.kcal/goal.kcal,1);
@@ -900,7 +936,7 @@ function renderSmartBanner(){
   const type = getTodayWorkoutType();
   const key = todayKey();
   const doneToday = state.sessions.some(s => s.date === key);
-  const totalKcal = todayFood.reduce((a,f)=>a+f.kcal,0);
+  const totalKcal = getTodayFood().reduce((a,f)=>a+f.kcal,0);
   const kcalGoal = state.goals.kcal;
   const messages = [];
 
@@ -1086,6 +1122,7 @@ async function pullFromSheet(){
         save();
         renderToday();
         renderProgress();
+        renderNutrition();
         renderCalHistory();
         renderBodyWeightHistory();
         renderCoachSnapshot();
@@ -1307,8 +1344,23 @@ function showOldAdvice(idx){
 }
 
 // ── КАЛОРИИ ПО ДНЯМ ──────────────────────────────────────────────────────
+// Автоматически сохраняем итог за день при каждом добавлении еды
+function autoSaveCalories(){
+  const total = getTodayFood().reduce((a,f)=>a+f.kcal,0);
+  if(total === 0) return;
+  if(!state.calHistory) state.calHistory = [];
+  const key = todayKey();
+  const existing = state.calHistory.findIndex(e => e.date === key);
+  if(existing >= 0){
+    state.calHistory[existing].kcal = Math.round(total);
+  } else {
+    state.calHistory.unshift({ date: key, kcal: Math.round(total) });
+    if(state.calHistory.length > 10) state.calHistory = state.calHistory.slice(0,10);
+  }
+}
+
 function saveCaloriesToHistory(){
-  const total = todayFood.reduce((a,f)=>a+f.kcal,0);
+  const total = getTodayFood().reduce((a,f)=>a+f.kcal,0);
   if(total === 0){ alert('Сначала добавь еду'); return; }
   if(!state.calHistory) state.calHistory = [];
   const key = todayKey();
