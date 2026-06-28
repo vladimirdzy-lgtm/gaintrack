@@ -689,6 +689,7 @@ function saveWorkout(type){
 
   state.sessions.push({ date: key, type, workoutName: PROGRAM[type].focus, exercises });
   save();
+  pushToSheet();
   renderProgress();
 
   // Анимация кнопки
@@ -745,9 +746,9 @@ async function analyzeFood(){
       });
     });
     setTodayFood(arr);
-    // Автоматически обновляем историю калорий за сегодня
     autoSaveCalories();
     save();
+    pushToSheet();
     renderNutrition();
     renderCalHistory();
     document.getElementById('ai-food-input').value = '';
@@ -1134,14 +1135,8 @@ async function pullFromSheet(){
   }
 }
 
-// Патчим функцию save() чтобы при каждом сохранении синхронизировало
-const _origSave = save;
-function save(){
-  _origSave();
-  if(isTokenValid() && gSheetId){
-    pushToSheet();
-  }
-}
+// pushToSheet вызывается явно после каждого save() где нужна синхронизация
+// (не патчим save() во избежание рекурсии)
 
 // При загрузке страницы — если токен ещё валидный, восстанавливаем сессию
 async function tryRestoreSession(){
@@ -1414,6 +1409,7 @@ function saveBodyWeight(){
     if(state.bodyWeights.length > 20) state.bodyWeights = state.bodyWeights.slice(0,20);
   }
   save();
+  pushToSheet();
   renderBodyWeightHistory();
   document.getElementById('bw-input').value = '';
 }
