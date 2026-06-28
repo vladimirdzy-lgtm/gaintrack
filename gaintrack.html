@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GainTrack</title>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GainTrack">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
 :root{--bg:#0e0e12;--surface:#16161c;--surface2:#1e1e28;--border:#2a2a38;--accent:#7c5cfc;--accent2:#fc5c7d;--green:#3dffa0;--text:#f0f0f8;--muted:#6b6b88;--font:'Space Grotesk',sans-serif;--mono:'Space Mono',monospace}
@@ -547,6 +550,20 @@ function renderToday(){
   const type = getTodayWorkoutType();
   const content_el = document.getElementById('today-content');
 
+  // Показываем предупреждение если не авторизован в Google
+  const isPWA = window.navigator.standalone === true ||
+                window.matchMedia('(display-mode: standalone)').matches;
+  if(isPWA && !isTokenValid()){
+    content_el.innerHTML = `
+      <div style="background:linear-gradient(135deg,#1a1040,#0e0e12);border:1px solid var(--accent);border-radius:16px;padding:24px;text-align:center;margin-bottom:14px">
+        <div style="font-size:40px;margin-bottom:12px">🔐</div>
+        <div style="font-size:18px;font-weight:700;margin-bottom:8px">Войди в Google</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.6">Чтобы загрузить твои данные тренировок и питания</div>
+        <button onclick="handleAuthClick()" style="background:linear-gradient(135deg,var(--accent),#a855f7);color:white;border:none;border-radius:12px;padding:14px 32px;font-size:15px;font-weight:700;cursor:pointer;font-family:var(--font);width:100%">Войти через Google</button>
+      </div>`;
+    return;
+  }
+
   if(!type){
     // ДЕНЬ ОТДЫХА — показываем следующую тренировку
     const next = getNextWorkoutInfo();
@@ -1019,9 +1036,10 @@ function handleAuthClick(){
     callback: async (resp) => {
       if(resp.error){ setSyncStatus('⚠ Ошибка авторизации', 'var(--accent2)'); return; }
       gAccessToken = resp.access_token;
-      gTokenExpiry = Date.now() + resp.expires_in * 1000;
+      // Google токены живут 1 час — сохраняем на 55 минут
+      gTokenExpiry = Date.now() + Math.min(resp.expires_in * 1000, 55 * 60 * 1000);
       localStorage.setItem('gt_gtoken', gAccessToken);
-      localStorage.setItem('gt_gexpiry', gTokenExpiry);
+      localStorage.setItem('gt_gexpiry', String(gTokenExpiry));
       await onSignedIn();
     }
   });
@@ -1151,17 +1169,44 @@ async function pullFromSheet(){
 // pushToSheet вызывается явно после каждого save() где нужна синхронизация
 // (не патчим save() во избежание рекурсии)
 
-// При загрузке страницы — если токен ещё валидный, восстанавливаем сессию
+// При загрузке — восстанавливаем сессию или просим войти (особенно важно для PWA)
 async function tryRestoreSession(){
+  const isPWA = window.navigator.standalone === true ||
+                window.matchMedia('(display-mode: standalone)').matches;
+
   if(isTokenValid() && gSheetId){
     document.getElementById('sync-btn').textContent = 'Выйти';
     document.getElementById('sync-btn').style.background = 'var(--surface2)';
     try {
       const r = await gFetch('https://www.googleapis.com/oauth2/v3/userinfo');
       const info = await r.json();
+      if(info.error){
+        // Токен протух — сбрасываем и просим войти
+        gAccessToken = null;
+        localStorage.removeItem('gt_gtoken');
+        localStorage.removeItem('gt_gexpiry');
+        showPWALoginBanner(isPWA);
+        return;
+      }
       document.getElementById('sync-user').textContent = info.email || 'Google';
     } catch(e){}
     await pullFromSheet();
+  } else {
+    // Нет токена — показываем приглашение войти
+    showPWALoginBanner(isPWA);
+  }
+}
+
+function showPWALoginBanner(isPWA){
+  const bar = document.getElementById('sync-bar');
+  if(isPWA){
+    // В PWA режиме показываем большой заметный баннер
+    bar.style.background = '#1a1040';
+    bar.style.borderBottom = '1px solid var(--accent)';
+    document.getElementById('sync-user').style.color = 'var(--accent)';
+    document.getElementById('sync-user').textContent = '👆 Войди чтобы загрузить данные';
+    document.getElementById('sync-btn').style.background = 'linear-gradient(135deg,var(--accent),#a855f7)';
+    document.getElementById('sync-btn').style.fontWeight = '700';
   }
 }
 
