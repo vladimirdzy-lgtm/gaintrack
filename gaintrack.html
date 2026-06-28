@@ -142,7 +142,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:1
     <input type="password" id="apikey-input" placeholder="sk-ant-..." style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;font-family:var(--mono)">
     <button onclick="saveApiKey()" style="background:var(--accent);color:white;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">Сохранить</button>
   </div>
-  <div style="margin-top:8px;font-size:11px;color:var(--muted)">Ключ хранится только в твоём браузере. Получить: <a href="https://console.anthropic.com" target="_blank" style="color:var(--accent)">console.anthropic.com</a></div>
+  <div style="margin-top:8px;font-size:11px;color:var(--muted);display:flex;justify-content:space-between;align-items:center">
+    <span>Получить ключ: <a href="https://console.anthropic.com" target="_blank" style="color:var(--accent)">console.anthropic.com</a></span>
+    <span onclick="resetApiKey()" style="color:var(--accent2);cursor:pointer">Сбросить ключ</span>
+  </div>
 </div>
 
 <div class="page active" id="page-today"><div id="today-content"></div></div>
@@ -444,12 +447,22 @@ const FOOD_DB = [
 function getApiKey(){ return localStorage.getItem('gt_apikey') || ''; }
 
 function saveApiKey(){
-  const k = document.getElementById('apikey-input').value.trim();
-  if(!k.startsWith('sk-ant-')){ alert('Ключ должен начинаться с sk-ant-'); return; }
+  // Агрессивно чистим — убираем пробелы, переносы, невидимые символы
+  const k = document.getElementById('apikey-input').value
+    .replace(/\s+/g,'').replace(/[^\x20-\x7E]/g,'').trim();
+  if(!k.startsWith('sk-ant-')){ 
+    alert('Ключ должен начинаться с sk-ant-\nПолучено: ' + k.slice(0,20)); 
+    return; 
+  }
   localStorage.setItem('gt_apikey', k);
   document.getElementById('apikey-banner').style.display = 'none';
   document.getElementById('apikey-input').value = '';
-  alert('✅ API ключ сохранён');
+  alert('✅ Ключ сохранён (' + k.length + ' символов)');
+}
+
+function resetApiKey(){
+  localStorage.removeItem('gt_apikey');
+  document.getElementById('apikey-banner').style.display = 'block';
 }
 
 function checkApiKeyBanner(){
