@@ -114,9 +114,36 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:1
 .num-row{display:flex;gap:8px;margin-top:8px}
 .num-input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 6px;color:var(--text);font-size:13px;font-family:var(--mono);text-align:center}
 .num-input:focus{outline:none;border-color:var(--accent)}
+
+/* AUTH OVERLAY */
+.auth-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px}
+.auth-logo{font-size:32px;font-weight:700;letter-spacing:-1px;margin-bottom:8px}.auth-logo span{color:var(--accent)}
+.auth-tagline{font-size:14px;color:var(--muted);margin-bottom:48px;text-align:center}
+.auth-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:28px;width:100%;max-width:360px}
+.auth-title{font-size:18px;font-weight:700;margin-bottom:6px}
+.auth-sub{font-size:13px;color:var(--muted);margin-bottom:24px;line-height:1.5}
+.auth-google-btn{width:100%;padding:14px;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;border:none;font-family:var(--font);background:white;color:#1a1a1a;display:flex;align-items:center;justify-content:center;gap:10px;transition:all .2s}
+.auth-google-btn:hover{opacity:.9;transform:translateY(-1px)}
+.auth-google-btn svg{width:20px;height:20px;flex-shrink:0}
+.auth-note{font-size:11px;color:var(--muted);text-align:center;margin-top:16px;line-height:1.6}
 </style>
 </head>
 <body>
+
+<!-- AUTH OVERLAY — показывается пока не авторизован -->
+<div class="auth-overlay" id="auth-overlay">
+  <div class="auth-logo">Gain<span>Track</span></div>
+  <div class="auth-tagline">Твой персональный трекер тренировок</div>
+  <div class="auth-card">
+    <div class="auth-title">Войди чтобы начать</div>
+    <div class="auth-sub">Данные сохраняются в Google Sheets и доступны с любого устройства</div>
+    <button class="auth-google-btn" onclick="handleAuthClick()">
+      <svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+      Войти через Google
+    </button>
+    <div class="auth-note">Данные хранятся только в твоём Google Drive.<br>Мы не имеем к ним доступа.</div>
+  </div>
+</div>
 
 <div class="nav">
   <div class="logo">Gain<span>Track</span></div>
@@ -389,7 +416,7 @@ const PROGRAM = {
     badge: 'badge-a',
     color: '#3dffa0',
     exercises: [
-      { name: 'Тяга гантели в наклоне', note: 'Одной рукой, упор в колено', sets: 3, reps: '10', repsMax: 10, startW: 10, bodyweight: false },
+      { name: 'Тяга гантелей в наклоне', note: 'Двумя руками, спина прямая, смотри вниз', sets: 3, reps: '10', repsMax: 10, startW: 10, bodyweight: false },
       { name: 'Разведение гантелей лёжа на животе', note: 'Rear Delt Fly — главное от сутулости', sets: 3, reps: '12–15', repsMax: 15, startW: 3, bodyweight: false },
       { name: 'Румынская тяга', note: 'Спина прямая, колени слегка согнуты', sets: 3, reps: '10', repsMax: 10, startW: 10, bodyweight: false },
       { name: 'Glute Bridge с гантелью', note: 'Гантель на бёдра, толкай тазом вверх', sets: 3, reps: '12', repsMax: 12, startW: 20, bodyweight: false },
@@ -549,20 +576,6 @@ function renderToday(){
   const dow = todayDow();
   const type = getTodayWorkoutType();
   const content_el = document.getElementById('today-content');
-
-  // Показываем предупреждение если не авторизован в Google
-  const isPWA = window.navigator.standalone === true ||
-                window.matchMedia('(display-mode: standalone)').matches;
-  if(isPWA && !isTokenValid()){
-    content_el.innerHTML = `
-      <div style="background:linear-gradient(135deg,#1a1040,#0e0e12);border:1px solid var(--accent);border-radius:16px;padding:24px;text-align:center;margin-bottom:14px">
-        <div style="font-size:40px;margin-bottom:12px">🔐</div>
-        <div style="font-size:18px;font-weight:700;margin-bottom:8px">Войди в Google</div>
-        <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.6">Чтобы загрузить твои данные тренировок и питания</div>
-        <button onclick="handleAuthClick()" style="background:linear-gradient(135deg,var(--accent),#a855f7);color:white;border:none;border-radius:12px;padding:14px 32px;font-size:15px;font-weight:700;cursor:pointer;font-family:var(--font);width:100%">Войти через Google</button>
-      </div>`;
-    return;
-  }
 
   if(!type){
     // ДЕНЬ ОТДЫХА — показываем следующую тренировку
@@ -1063,6 +1076,10 @@ async function onSignedIn(){
   document.getElementById('sync-btn').style.background = 'var(--surface2)';
   setSyncStatus('Подключено ✓', 'var(--green)');
 
+  // Скрываем оверлей авторизации
+  const overlay = document.getElementById('auth-overlay');
+  if(overlay) overlay.style.display = 'none';
+
   // Получаем email пользователя
   try {
     const r = await gFetch('https://www.googleapis.com/oauth2/v3/userinfo');
@@ -1171,8 +1188,7 @@ async function pullFromSheet(){
 
 // При загрузке — восстанавливаем сессию или просим войти (особенно важно для PWA)
 async function tryRestoreSession(){
-  const isPWA = window.navigator.standalone === true ||
-                window.matchMedia('(display-mode: standalone)').matches;
+  const overlay = document.getElementById('auth-overlay');
 
   if(isTokenValid() && gSheetId){
     document.getElementById('sync-btn').textContent = 'Выйти';
@@ -1181,32 +1197,24 @@ async function tryRestoreSession(){
       const r = await gFetch('https://www.googleapis.com/oauth2/v3/userinfo');
       const info = await r.json();
       if(info.error){
-        // Токен протух — сбрасываем и просим войти
+        // Токен протух — показываем оверлей
         gAccessToken = null;
         localStorage.removeItem('gt_gtoken');
         localStorage.removeItem('gt_gexpiry');
-        showPWALoginBanner(isPWA);
+        if(overlay) overlay.style.display = 'flex';
         return;
       }
       document.getElementById('sync-user').textContent = info.email || 'Google';
-    } catch(e){}
+      // Токен валидный — скрываем оверлей
+      if(overlay) overlay.style.display = 'none';
+    } catch(e){
+      if(overlay) overlay.style.display = 'flex';
+      return;
+    }
     await pullFromSheet();
   } else {
-    // Нет токена — показываем приглашение войти
-    showPWALoginBanner(isPWA);
-  }
-}
-
-function showPWALoginBanner(isPWA){
-  const bar = document.getElementById('sync-bar');
-  if(isPWA){
-    // В PWA режиме показываем большой заметный баннер
-    bar.style.background = '#1a1040';
-    bar.style.borderBottom = '1px solid var(--accent)';
-    document.getElementById('sync-user').style.color = 'var(--accent)';
-    document.getElementById('sync-user').textContent = '👆 Войди чтобы загрузить данные';
-    document.getElementById('sync-btn').style.background = 'linear-gradient(135deg,var(--accent),#a855f7)';
-    document.getElementById('sync-btn').style.fontWeight = '700';
+    // Нет токена — показываем оверлей
+    if(overlay) overlay.style.display = 'flex';
   }
 }
 
